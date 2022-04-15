@@ -1,7 +1,7 @@
 {
     "name": "@qnixdev/recommend-api",
     "description": "Creates an API that can create a iframe to collect/receive user recommendations",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "license": "MIT",
     "repository": "qnixdev/recommend-api",
     "main": "src/index.js",
