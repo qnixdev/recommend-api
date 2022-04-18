@@ -1,50 +1,23 @@
 let viewIframe = null;
 let initDone = false;
+let serverName;
 let autoEntryIds = [];
-let iframeIdName = 'me-recommend';
-let server;
 let lastAutoEntryId;
 
 /**
- * @param customServer  {string}
+ * @param customServer  {string|null}
  */
-export function initEmail(customServer) {
-    for (let form of document.forms) {
-        for (let element of form.elements) {
-            if (element.getAttribute('type') === 'email') {
-                form.addEventListener('submit', () => {
-                    if (element) {
-                        if (initDone === false) {
-                            init(customServer);
-                        }
+export function init(customServer = null) {
+    const iframeIdName = 'me-recommend';
 
-                        let clickData = {
-                            iframeAction: 'email',
-                            email: element.value
-                        };
-                        sendData(
-                            viewIframe,
-                            clickData,
-                            server + 'saveMeta'
-                        );
-                    }
-                }, false);
-            }
-        }
+    if (null !== customServer) {
+        serverName = customServer;
     }
-}
-
-/**
- * @param customServer  {string}
- */
-export function init(customServer) {
-    initDone = true;
-    server = customServer;
 
     if (null === document.getElementById(iframeIdName)) {
         let iframe = document.createElement('iframe');
         iframe.id = iframeIdName;
-        iframe.src = customServer + 'iframe';
+        iframe.src = serverName + 'iframe';
         iframe.style.setProperty('display', 'none', 'important');
         document.body.appendChild(iframe);
 
@@ -54,90 +27,109 @@ export function init(customServer) {
     }
 
     viewIframe = document.getElementById(iframeIdName);
-    initEmail(customServer);
+    initDone = true;
+    initEmail();
+}
+
+export function initEmail() {
+    for (let form of document.forms) {
+        for (let element of form.elements) {
+            if (element.getAttribute('type') === 'email') {
+                form.addEventListener('submit', function () {
+                    let email = undefined !== element.value ? element.value : null;
+
+                    if (
+                        null === email
+                        || (email && email.trim().length === 0)
+                    ) {
+                        return;
+                    }
+
+                    if (initDone === false) {
+                        init();
+                    }
+
+                    let data = {
+                        iframeAction: 'email',
+                        email: email.trim(),
+                    };
+                    sendData(
+                        viewIframe,
+                        data,
+                        serverName + 'saveMeta'
+                    );
+                }, false);
+            }
+        }
+    }
 }
 
 /**
- * @param customServer       {string}
  * @param customTitle        {string|null}
  * @param customDescription  {string|null}
  */
 export function startRecommend(
-    customServer,
     customTitle = null,
     customDescription = null
 ) {
     if (initDone === false) {
-        init(customServer);
+        init();
     }
 
-    try {
-        if (null === customTitle) {
-            customTitle = document.title
-        }
-
-        if (null === customDescription) {
-            let metaDescription = document.querySelector('meta[name="description"]');
-
-            if (null !== metaDescription) {
-                customDescription = metaDescription.content;
-            }
-        }
-
-        let tmpArray = {
-            iframeAction: 'store',
-            title: customTitle,
-            description: customDescription,
-            url: window.location.href,
-        };
-        sendData(
-            viewIframe,
-            tmpArray,
-            server
-        );
-    } catch (e) {
-        console.log(e);
-    }
-}
-
-/**
- * @param projectId  {number}
- */
-export function sendAutoConversion(projectId) {
-    sendConversionAction(server, lastAutoEntryId, projectId);
+    let data = {
+        iframeAction: 'store',
+        title: getTittle(customTitle),
+        description: getDescription(customDescription),
+        url: getUri(),
+    };
+    sendData(
+        viewIframe,
+        data,
+        serverName
+    );
 }
 
 /**
  * @param projectId  {number}
  */
 export function sendAutoEntries(projectId) {
-    let jsonLDArray = document.querySelectorAll('script[type="application/ld+json"]');
-    jsonLDArray.forEach(function (jsonLDElement) {
-        sendAutoEntry(jsonLDElement, projectId);
-    });
+    let jsonLdList = document.querySelectorAll('script[type="application/ld+json"]');
+
+    for (let jsonLdElement of jsonLdList) {
+        sendAutoEntry(jsonLdElement, projectId);
+    }
 }
 
 /**
- * @param jsonLDElement
- * @param projectId  {number}
+ * @param jsonLdElement  {Object}
+ * @param projectId      {number}
  */
-export function sendAutoEntry(jsonLDElement, projectId) {
-    let xhr = new XMLHttpRequest();
-    xhr.open('POST', server + 'auto-entry', true);
+export function sendAutoEntry(jsonLdElement, projectId) {
     let data = new FormData();
-    data.append('autoEntryBody', jsonLDElement.innerText);
+    data.append('autoEntryBody', jsonLdElement.innerText);
     data.append('projectId', projectId.toString());
-    data.append('url', window.location.href);
-    xhr.onloadend = function () {
+    data.append('url', getUri());
+
+    let xhr = new XMLHttpRequest();
+    xhr.open('POST', serverName + 'auto-entry');
+    xhr.onload = function () {
         let responseArray = JSON.parse(xhr.responseText);
 
         if (responseArray['entryId']) {
-            sendClickAction(server, responseArray['entryId'], projectId); // TODO: must be sendViewAction() in future
-            lastAutoEntryId = responseArray['entryId'];
-            autoEntryIds[responseArray['entryId']] = responseArray['entryId'];
+            let entryId = parseInt(responseArray['entryId'], 10);
+            sendClickAction(entryId, projectId); // TODO: must be sendViewAction() in future
+            lastAutoEntryId = entryId;
+            autoEntryIds[entryId] = entryId;
         }
     }
     xhr.send(data);
+}
+
+/**
+ * @param projectId  {number}
+ */
+export function sendAutoConversion(projectId) {
+    sendConversionAction(lastAutoEntryId, projectId);
 }
 
 /**
@@ -158,8 +150,6 @@ export function sendCustomEntry(
     customImageUrl = null,
     customUrl = null
 ) {
-    let xhr = new XMLHttpRequest();
-    xhr.open('POST', server + 'custom-entry', true);
     let data = new FormData();
     data.append('customEntryBody', entryJson);
     data.append('projectId', projectId.toString());
@@ -168,11 +158,13 @@ export function sendCustomEntry(
     data.append('customImageUrl', customImageUrl);
     data.append('customUrl', customUrl);
     data.append('uniqueEntryId', uniqueEntryId.toString());
+
+    let xhr = new XMLHttpRequest();
+    xhr.open('POST', serverName + 'custom-entry');
     xhr.send(data);
 }
 
 /**
- * @param customServer       {string}
  * @param uniqueEntryId      {number}
  * @param projectId          {number}
  * @param customTitle        {string|null}
@@ -181,7 +173,6 @@ export function sendCustomEntry(
  * @param userHistoryId      {string|null}
  */
 export function sendViewAction(
-    customServer,
     uniqueEntryId,
     projectId,
     customTitle = null,
@@ -189,11 +180,10 @@ export function sendViewAction(
     url = null,
     userHistoryId = null
 ) {
-    sendCustomAction(customServer, 1, uniqueEntryId, projectId, customTitle, customDescription, url, userHistoryId);
+    sendAction(1, uniqueEntryId, projectId, customTitle, customDescription, url, userHistoryId);
 }
 
 /**
- * @param customServer       {string}
  * @param uniqueEntryId      {number}
  * @param projectId          {number}
  * @param customTitle        {string|null}
@@ -202,7 +192,6 @@ export function sendViewAction(
  * @param userHistoryId      {string|null}
  */
 export function sendClickAction(
-    customServer,
     uniqueEntryId,
     projectId,
     customTitle = null,
@@ -210,11 +199,10 @@ export function sendClickAction(
     url = null,
     userHistoryId = null
 ) {
-    sendCustomAction(customServer, 2, uniqueEntryId, projectId, customTitle, customDescription, url, userHistoryId);
+    sendAction(2, uniqueEntryId, projectId, customTitle, customDescription, url, userHistoryId);
 }
 
 /**
- * @param customServer       {string}
  * @param uniqueEntryId      {number}
  * @param projectId          {number}
  * @param customTitle        {string|null}
@@ -223,7 +211,6 @@ export function sendClickAction(
  * @param userHistoryId      {string|null}
  */
 export function sendConversionAction(
-    customServer,
     uniqueEntryId,
     projectId,
     customTitle = null,
@@ -231,11 +218,10 @@ export function sendConversionAction(
     url = null,
     userHistoryId = null
 ) {
-    sendCustomAction(customServer, 3, uniqueEntryId, projectId, customTitle, customDescription, url, userHistoryId);
+    sendAction(3, uniqueEntryId, projectId, customTitle, customDescription, url, userHistoryId);
 }
 
 /**
- * @param customServer       {string}
  * @param action             {number}
  * @param uniqueEntryId      {number}
  * @param projectId          {number}
@@ -246,8 +232,7 @@ export function sendConversionAction(
  *
  * @private
  */
-function sendCustomAction(
-    customServer,
+function sendAction(
     action,
     uniqueEntryId,
     projectId,
@@ -257,40 +242,24 @@ function sendCustomAction(
     userHistoryId = null
 ) {
     if (initDone === false) {
-        init(customServer);
-    }
-
-    if (null === customTitle) {
-        customTitle = document.title
-    }
-
-    if (null === customDescription) {
-        let metaDescription = document.querySelector('meta[name="description"]');
-
-        if (null !== metaDescription) {
-            customDescription = metaDescription.content;
-        }
-    }
-
-    if (null === url) {
-        url = window.location.href;
+        init();
     }
 
     let clickData = {
+        iframeAction: 'action',
+        debugUrl: getUri(),
         action: action,
         clientId: uniqueEntryId,
         projectId: projectId,
-        title: customTitle,
-        description: customDescription,
-        url: url,
+        title: getTittle(customTitle),
+        description: getDescription(customDescription),
+        url: getUri(url),
         userHistoryId: userHistoryId,
-        iframeAction: 'action',
-        debugUrl: window.location.href,
     };
     sendData(
         viewIframe,
         clickData,
-        server + 'saveMeta'
+        serverName + 'saveMeta'
     );
 }
 
@@ -309,4 +278,78 @@ function sendData(iframe, data, server) {
             sendData(iframe, data, server);
         }, 2);
     }
+}
+
+/**
+ * @param customTitle  {string|null}
+ *
+ * @return {string|null}
+ * @private
+ */
+function getTittle(customTitle) {
+    if (null !== customTitle) {
+        let receivedTitle = customTitle.trim();
+
+        if (receivedTitle.length > 0) {
+            return receivedTitle;
+        }
+    }
+
+    let pageTitle = undefined !== document.title ? document.title : null;
+
+    if (null !== pageTitle) {
+        let title = pageTitle.trim();
+
+        return title.length > 0 ? title : null;
+    }
+
+    return null;
+}
+
+/**
+ * @param customDescription  {string|null}
+ *
+ * @return {string|null}
+ * @private
+ */
+function getDescription(customDescription) {
+    if (null !== customDescription) {
+        let receivedDescription = customDescription.trim();
+
+        if (receivedDescription.length > 0) {
+            return receivedDescription;
+        }
+    }
+
+    let descriptionElement = document.querySelector('meta[name="description"]');
+
+    if (null !== descriptionElement) {
+        let pageDescription = undefined !== descriptionElement.content ? descriptionElement.content : null;
+
+        if (null !== pageDescription) {
+            let description = pageDescription.trim();
+
+            return description.length > 0 ? description : null;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * @param url  {string|null}
+ *
+ * @return {string}
+ * @private
+ */
+function getUri(url = null) {
+    if (null !== url) {
+        let uri = url.trim();
+
+        if (uri.length > 0) {
+            return encodeURI(uri);
+        }
+    }
+
+    return encodeURI(window.location.href);
 }

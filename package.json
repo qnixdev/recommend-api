@@ -10,8 +10,7 @@
         "url": "git://github.com/qnixdev/recommend-api.git"
     },
     "keywords": [
-        "npm",
-        "package",
+        "collect",
         "recommendation",
         "iframe"
     ],
@@ -20,7 +19,7 @@
         "src"
     ],
     "license": "MIT",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "devDependencies": {},
     "dependencies": {}
 }
